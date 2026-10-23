@@ -1,0 +1,9 @@
+{
+  "id": "lyric_motion_renderer",
+  "schemaVersion": 1,
+  "version": "0.18.1-dev",
+  "name": "Lyric Motion Renderer（技術試作）",
+  "status": "development",
+  "modes": ["standalone"],
+  "pages": [{ "name": "Lyric Motion Renderer", "file": "index.html", "type": "control", "role": "editor", "obs": false, "modes": ["standalone"] }]
+}

@@ -1,0 +1,14 @@
+{
+  "name": "lyric-motion-renderer",
+  "version": "0.18.1-dev",
+  "private": true,
+  "description": "Browser-based kinetic typography and lyric motion renderer",
+  "license": "MIT",
+  "scripts": {
+    "dev": "node scripts/serve.mjs",
+    "test": "node --test test/lyric-motion.test.js"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

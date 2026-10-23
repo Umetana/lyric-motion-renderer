@@ -1,0 +1,13 @@
+node_modules/
+test-artifacts/
+.DS_Store
+Thumbs.db
+*.log
+
+# Local project files and media
+*.lyricmotion.json
+*.lyricmotion.zip
+*.mp3
+*.wav
+.env
+.env.*
