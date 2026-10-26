@@ -175,3 +175,20 @@ main.animation-collapsed .events-panel > .section-heading { margin: 0; }
   #scenes > button, #elements > .element-row { flex: none; }
   .library-elements { margin-top: 16px; border-top: 1px solid #465572; padding-top: 12px; }
 }
+
+/* Inspectorは複数の設定グループを同時に開ける。開閉時に入力DOMは破棄しない。 */
+.inspector-heading { position: sticky; top: -14px; z-index: 2; background: #191f2d; margin: -14px -14px 8px; padding: 12px 14px 8px; border-bottom: 1px solid #465572; }
+.inspector-heading h2 { margin: 0 0 5px; font-size: 15px; }
+.inspector-heading #element-title { margin: 0; font-size: 13px; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.inspector-heading p { margin: 3px 0 0; overflow-wrap: anywhere; }
+.inspector-group { border: 1px solid #465572; border-radius: 8px; margin: 0 0 8px; }
+.inspector-group > summary { cursor: pointer; padding: 10px 12px; font-size: 14px; font-weight: bold; color: #e9edf6; }
+.inspector-group > summary:hover { background: #25354a; border-radius: 8px; }
+.inspector-body { padding: 4px 12px 12px; }
+#settings { margin-bottom: 0; }
+#inspector-multiple[hidden] { display: none; }
+.inspector-group #preset-controls { border: 0; padding: 0; margin-bottom: 14px; }
+.inspector-group #bulk-controls, .inspector-group #sequence-controls { border: 0; padding: 0; margin: 6px 0 14px; }
+.inspector-group h2 { font-size: 14px; }
+.inspector-group fieldset { margin-bottom: 10px; }
+@media (max-width: 1099px) { .inspector-heading { top: 0; margin: -20px -20px 8px; padding: 12px 20px 8px; z-index: 1; } }

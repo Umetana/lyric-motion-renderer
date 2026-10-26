@@ -102,6 +102,8 @@
   for (const option of $('bulk-font').options) option.textContent = LyricMotionFonts.PRESETS.find(p => p.id === option.value)?.name || (option.value === 'keep' ? '変更なし' : option.value === 'google' ? 'Google Fonts指定（試験）' : 'カスタム（PC）');
   function updateBulkControls() {
     updatePlacementControls(); updateMotionControls();
+    $('inspector-multiple').hidden = !bulkIds.size;
+    $('inspector-selection').textContent = bulkIds.size ? `一括編集対象: ${bulkIds.size} Element` : '個別編集';
     $('bulk-controls').hidden = !bulkIds.size;
     $('sequence-controls').hidden = bulkIds.size < 2; updateSequenceDescription();
     const targets = selectedScene()?.elements.filter(e => bulkIds.has(e.id)) || [];
@@ -335,9 +337,10 @@
     for (const key of ['width', 'height', 'fps', 'duration']) $(key).value = project.project[key];
     $('background').value = project.export.background; syncBackgroundPreset(); colorPicker.refresh();
     $('scene-settings').hidden = !s; $('element-settings').hidden = !e;
+    $('element-title').textContent = e ? `選択中: ${e.text.slice(0, 40) || '空の文字'}` : 'Element未選択'; $('element-title').title = e?.text || '';
+    $('inspector-scene').textContent = s ? `Scene: ${s.name || 'Scene'}` : 'Sceneなし';
     if (s) { $('scene-name').value = s.name; $('scene-start').value = s.start; $('scene-end').value = s.end; }
     if (e) {
-      $('element-title').textContent = `選択中: ${e.text.slice(0, 20) || '空の文字'}`;
       $('element-text').value = e.text; $('element-start').value = e.start; $('element-end').value = e.end;
       for (const key of ['x', 'y']) setCoordinate($(`element-${key}`), e.position[key]);
       for (const key of ['scale', 'rotation']) $(`element-${key}`).value = e.transform[key];
@@ -425,7 +428,7 @@
     try { pause(); readEditor(); const current = revision; await R.prepareFonts(project); if (current !== revision) return; fillEditor(); if (draw()) message('変更を反映しました。JSON保存で演出を保存できます。'); }
     catch (error) { message(error.message, true); }
   }
-  $('settings').addEventListener('change', change); $('scene-settings').addEventListener('change', change); $('keyframes').addEventListener('change', change);
+  $('settings').addEventListener('change', event => { if (!event.target.closest('.reference-controls')) change(); }); $('scene-settings').addEventListener('change', change); $('keyframes').addEventListener('change', change);
   $('track-tools').addEventListener('click', event => { const prop = event.target.dataset.track; if (!prop) return; mutate(p => {
     const e = selectedElement(p); const initial = prop === 'opacity' ? 1 : ['x', 'y'].includes(prop) ? e.position[prop] : e.transform[prop];
     e.animations.push(P.track(prop, [[0, initial], [e.end - e.start, initial]]));
