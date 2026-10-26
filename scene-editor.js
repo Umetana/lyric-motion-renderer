@@ -3,7 +3,7 @@
   const M = LyricMotionPresets, L = LyricMotionScript;
   let motionUndo = null, bulkSceneId = null;
   const bulkIds = new Set();
-  let sequenceSelection = '';
+  let sequenceSelection = '', librarySceneId = null;
   const P = LyricMotionProject, R = LyricMotionRenderer, E = LyricMotionExporter;
   const $ = id => document.getElementById(id), renderer = new R.Renderer($('preview'));
   const names = { none: 'なし', fade: 'Fade', pop: 'Pop', impact: 'Impact', typewriter: 'Typewriter', glow: 'Glow', sweep: 'Sweep',
@@ -316,7 +316,11 @@
     catch (error) { sceneId = previousScene; elementId = previousElement; message(error.message, true); }
   }
   function fillEditor() {
+    const sceneScroll = $('scenes').scrollTop, elementScroll = $('elements').scrollTop;
     const s = selectedScene() || project.scenes[0]; sceneId = s?.id;
+    const sceneChanged = librarySceneId !== sceneId; librarySceneId = sceneId;
+    $('scene-count').textContent = `${project.scenes.length}件`; $('element-count').textContent = `${s?.elements.length || 0}件`;
+    $('library-scene-name').textContent = s ? `選択Scene: ${s.name || 'Scene'}` : 'Sceneなし'; $('library-scene-name').title = s?.name || '';
     const e = s?.elements.find(item => item.id === elementId) || s?.elements[0]; elementId = e?.id;
     if (bulkSceneId !== sceneId) { bulkIds.clear(); bulkSceneId = sceneId; }
     for (const id of bulkIds) if (!s?.elements.some(item => item.id === id)) bulkIds.delete(id);
@@ -365,6 +369,7 @@
       check.addEventListener('change', () => { if (check.checked) bulkIds.add(item.id); else bulkIds.delete(item.id); updateBulkControls(); });
       row.append(check, b); return row;
     }));
+    $('scenes').scrollTop = sceneScroll; $('elements').scrollTop = sceneChanged ? 0 : elementScroll;
     fillTracks(e); updateSplitPreview();
     for (const id of ['remove-element', 'split-element', 'split-phrases', 'move-back', 'move-front']) $(id).disabled = !e;
     $('add-element').disabled = !s; $('remove-scene').disabled = !s;

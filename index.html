@@ -9,7 +9,7 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <header><div><p class="eyebrow">VCreatorTools · v0.18.1-dev</p><h1>Lyric Motion Renderer</h1><p>歌詞を配置し、動きを振り付ける。</p></div><div class="toolbar"><button id="sample">文字演出サンプル</button><span id="save-controls"><label>保存形式<select id="save-format"><option value="json">JSONのみ</option><option value="bundle">素材込み（ZIP）</option></select></label></span><button id="save">保存</button><button id="save-as">名前を付けて保存</button><button id="download-project">ダウンロード</button><label class="file-button">プロジェクト読込<input id="load" type="file" accept=".json,.zip"></label><a href="README.md">使い方</a></div></header>
+  <header><div><p class="eyebrow">VCreatorTools · v0.19.0-dev</p><h1>Lyric Motion Renderer</h1><p>歌詞を配置し、動きを振り付ける。</p></div><div class="toolbar"><button id="sample">文字演出サンプル</button><span id="save-controls"><label>保存形式<select id="save-format"><option value="json">JSONのみ</option><option value="bundle">素材込み（ZIP）</option></select></label></span><button id="save">保存</button><button id="save-as">名前を付けて保存</button><button id="download-project">ダウンロード</button><label class="file-button">プロジェクト読込<input id="load" type="file" accept=".json,.zip"></label><a href="README.md">使い方</a></div></header>
   <div id="recovery-bar"><span id="recovery-status" role="status">自動保存を準備しています…</span><span id="recovery-actions" hidden><button id="restore-work">前回の作業を復元</button><button id="discard-work">前回の作業を破棄</button></span></div>
   <main>
     <section class="preview-panel">
@@ -22,11 +22,23 @@
       <audio id="audio" preload="metadata"></audio>
     </section>
     <section class="library-panel" aria-label="SceneとElementの編集">
-      <h2 class="subheading">Scene</h2><div id="scenes" class="scene-list"></div>
-      <div id="scene-settings" class="scene-fields"><label>Scene名<input id="scene-name" type="text" maxlength="200"></label><div class="pair"><label>開始（曲の秒）<input id="scene-start" type="number" step="0.01"></label><label>終了（曲の秒）<input id="scene-end" type="number" step="0.01"></label></div></div>
-      <div class="toolbar"><button id="add-scene">Scene追加</button><button id="remove-scene">Scene削除</button><label class="file-button">LRC / SRT読込<input id="subtitle-file" type="file" accept=".lrc,.srt"></label><label class="file-button">歌詞台本読込<input id="script-file" type="file" accept=".lyricmotion,.txt"></label></div>
-      <h2 class="subheading">Element <span class="hint">下の要素ほど手前</span></h2><p class="hint">左のチェックで一括編集対象を選択。文字ボタンで個別編集します。</p><label class="checkbox-label"><input id="seek-on-select" type="checkbox" checked>Element選択時に再生位置を移動</label><p class="hint">OFFなら現在位置を維持。歌唱に合わせて開始・終了を順番に設定するときに使えます。</p><div class="toolbar"><button id="bulk-all">Scene内を全選択</button><button id="bulk-clear">選択解除</button><span id="bulk-count">0 Element選択</span></div><div id="elements" class="element-list"></div>
-      <div class="toolbar"><button id="add-element">文字を追加</button><button id="split-element">一文字ずつに分解</button><button id="remove-element">Element削除</button><button id="move-back">奥へ</button><button id="move-front">手前へ</button><button id="distribute-timing">時間を均等に振り分け</button></div>
+      <div class="library-scenes" aria-label="Scene一覧と操作">
+        <h2>Scene <span id="scene-count" class="hint"></span></h2><div id="scenes" class="scene-list" tabindex="0" aria-label="Scene一覧"></div>
+        <details id="scene-details" class="library-details"><summary>Scene編集・読込</summary><div class="library-details-body">
+          <div id="scene-settings" class="scene-fields"><label>Scene名<input id="scene-name" type="text" maxlength="200"></label><div class="pair"><label>開始（曲の秒）<input id="scene-start" type="number" step="0.01"></label><label>終了（曲の秒）<input id="scene-end" type="number" step="0.01"></label></div></div>
+          <div class="toolbar"><button id="add-scene">Scene追加</button><button id="remove-scene">Scene削除</button><label class="file-button">LRC / SRT読込<input id="subtitle-file" type="file" accept=".lrc,.srt"></label><label class="file-button">歌詞台本読込<input id="script-file" type="file" accept=".lyricmotion,.txt"></label></div>
+        </div></details>
+      </div>
+      <div class="library-elements" aria-label="選択SceneのElement一覧と操作">
+        <div class="library-element-heading"><h2>Element <span id="element-count" class="hint"></span></h2><p id="library-scene-name" class="hint"></p></div>
+        <div class="toolbar library-selection"><button id="bulk-all">全選択</button><button id="bulk-clear">解除</button><span id="bulk-count" class="hint">0 Element選択</span></div>
+        <div id="elements" class="element-list" tabindex="0" aria-label="Element一覧"></div>
+        <details id="element-tools" class="library-details"><summary>Element操作・選択設定</summary><div class="library-details-body">
+          <p class="hint">左のチェックで一括編集対象を選択。文字ボタンで個別編集します。下の要素ほど手前です。</p>
+          <label class="checkbox-label"><input id="seek-on-select" type="checkbox" checked>Element選択時に再生位置を移動</label><p class="hint">OFFなら現在位置を維持。歌唱に合わせて開始・終了を順番に設定するときに使えます。</p>
+          <div class="toolbar"><button id="add-element">文字を追加</button><button id="split-element">一文字ずつに分解</button><button id="remove-element">Element削除</button><button id="move-back">奥へ</button><button id="move-front">手前へ</button><button id="distribute-timing">時間を均等に振り分け</button></div>
+        </div></details>
+      </div>
     </section>
     <aside class="settings-panel">
       <h2>キャンバス・選択Element</h2>

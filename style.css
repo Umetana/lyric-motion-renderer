@@ -146,3 +146,32 @@ main.animation-collapsed .events-panel > .section-heading { margin: 0; }
   .preview-panel > .hint { margin: 4px 0; }
   .preview-panel > .section-heading h2 { margin-bottom: 6px; }
 }
+
+/* Scene数とElement数に依存せず、各一覧のスクロールを分離する。 */
+.library-scenes, .library-elements { min-width: 0; min-height: 0; }
+.library-scenes h2, .library-elements h2 { margin: 0; font-size: 16px; }
+.library-scenes > h2 { margin-bottom: 8px; }
+.library-element-heading { min-width: 0; }
+#library-scene-name { margin: 4px 0 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.library-selection { gap: 5px; margin-bottom: 8px; }
+.library-selection button { padding: 5px 8px; }
+.library-details { min-width: 0; border-top: 1px solid #303b51; padding-top: 6px; }
+.library-details summary { cursor: pointer; color: #becade; font-size: 12px; padding: 5px 0; }
+.library-details-body { padding-top: 5px; overflow-y: auto; max-height: 180px; }
+.library-details .scene-fields { margin-top: 0; }
+@media (min-width: 1100px) {
+  .library-panel { display: grid; grid-template-rows: minmax(0, 30%) minmax(0, 1fr); gap: 10px; overflow: hidden; padding: 12px; }
+  .library-panel:has(#scene-details[open]) { grid-template-rows: minmax(0, 52%) minmax(0, 1fr); }
+  .library-scenes { display: grid; grid-template-rows: auto minmax(24px, 1fr) auto; }
+  .library-elements { display: grid; grid-template-rows: auto auto minmax(32px, 1fr) auto; border-top: 1px solid #465572; padding-top: 10px; }
+  #scenes, #elements { overflow-y: auto; overscroll-behavior: contain; margin: 0 0 8px; padding-right: 4px; flex-wrap: nowrap; justify-content: flex-start; }
+  #scenes > button, #elements > .element-row { flex: none; }
+  #scenes > button { font-size: 12px; padding: 8px; }
+  .library-details-body { max-height: clamp(40px, calc(100dvh - 650px), 150px); }
+}
+@media (max-width: 1099px) {
+  #scenes { max-height: 220px; overflow-y: auto; flex-direction: column; flex-wrap: nowrap; }
+  #elements { max-height: 360px; overflow-y: auto; flex-direction: column; flex-wrap: nowrap; }
+  #scenes > button, #elements > .element-row { flex: none; }
+  .library-elements { margin-top: 16px; border-top: 1px solid #465572; padding-top: 12px; }
+}

@@ -1,6 +1,6 @@
 # Lyric Motion Renderer
 
-歌詞を配置し、動きを振り付けるブラウザ用のKinetic Typography制作ツールです。v0.18.1-dev。歌詞を映像表現の素材として扱い、動画編集ソフトへ重ねる文字演出素材を作ります。
+歌詞を配置し、動きを振り付けるブラウザ用のKinetic Typography制作ツールです。v0.19.0-dev。歌詞を映像表現の素材として扱い、動画編集ソフトへ重ねる文字演出素材を作ります。
 
 本格的な動画編集ソフトや字幕規格への高度な準拠を目指すツールではありません。生成結果を確認し、必要な部分を手直しする制作フローを想定しています。
 
@@ -68,3 +68,7 @@ GitHub PagesはSettings → Pagesで「Deploy from a branch」、`main`／`/(roo
 ## ライセンス
 
 自作コードは[MIT](LICENSE)。同梱のMediabunnyはMPL-2.0です。[Third-party notices](THIRD_PARTY_NOTICES.md)を参照してください。
+
+## Scene／Element一覧の操作
+
+デスクトップの左側はScene一覧（上段）と選択SceneのElement一覧（下段）を独立してスクロールできます。Scene数が増えてもElement一覧は押し下げられません。件数と選択Scene名を表示し、全選択／解除は常時表示します。「Scene編集・読込」「Element操作・選択設定」を開くと、時刻編集・読込・追加削除・自動シーク設定などが使えます。Scene編集欄を開いている間だけ上段を広げます。Scene変更時はElement一覧を先頭へ、同じSceneの編集では現在のスクロール位置を保持します。
