@@ -369,3 +369,19 @@ test('Lyric Motion: 全複数プリセットで時刻・配置を保持して動
  }
  assert.throws(()=>M.sequence(p,scene.id,ids,{type:'wave',motionOnly:true,delay:5,strength:1}));
 });
+
+test('Lyric Motion: PNGは最大2枚のスナップショットを保存し、中止・書込エラー後に処理を残さない', async () => {
+ const E=require('../exporter.js'),previousDocument=globalThis.document,previousRenderer=globalThis.LyricMotionRenderer;
+ const wait=ms=>new Promise(r=>setTimeout(r,ms));
+ globalThis.document={createElement(){return {width:1920,height:1080,frame:0,toBlob(callback){const snapshot=this.frame;setTimeout(()=>callback(new Blob([String(snapshot)])),snapshot%2?0:5);}};}};
+ globalThis.LyricMotionRenderer={prepareFonts:async()=>{},Renderer:class{constructor(canvas){this.canvas=canvas;this.cache=new Map();}render(p,time){this.canvas.frame=Math.round(time*p.project.fps);}}};
+ try {
+  const frames=new Map(),progress=[],project=S.sample();let active=0,maxActive=0;
+  const result=await E.exportProject(project,{format:'png',start:0,end:.2,onProgress:p=>progress.push(p.completed),writePng:async(name,blob)=>{active++;maxActive=Math.max(maxActive,active);await wait(2);frames.set(name,await blob.text());active--;}});
+  assert.equal(frames.size,6);for(let i=0;i<6;i++)assert.equal(frames.get(`frame_${String(i+1).padStart(6,'0')}.png`),String(i));
+  assert(maxActive<=2);assert.equal(result.report.pngStats.maxInFlight,2);assert.deepEqual(progress,[1,2,3,4,5,6]);assert(result.report.timings.pngEncodeMs>0);
+  const controller=new AbortController();let cancelActive=0,cancelWrites=0;
+  await assert.rejects(()=>E.exportProject(project,{format:'png',start:0,end:.2,signal:controller.signal,writePng:async()=>{cancelActive++;controller.abort();await wait(5);cancelWrites++;cancelActive--;}}),e=>e.name==='AbortError');assert.equal(cancelActive,0);const count=cancelWrites;await wait(10);assert.equal(cancelWrites,count);
+  let failedActive=0;await assert.rejects(()=>E.exportProject(project,{format:'png',start:0,end:.2,writePng:async()=>{failedActive++;await wait(5);failedActive--;throw new Error('disk failure');}}),/disk failure/);assert.equal(failedActive,0);
+ } finally { if(previousDocument===undefined)delete globalThis.document;else globalThis.document=previousDocument;if(previousRenderer===undefined)delete globalThis.LyricMotionRenderer;else globalThis.LyricMotionRenderer=previousRenderer; }
+});

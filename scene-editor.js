@@ -569,7 +569,7 @@
         onProgress: ({ completed, total, elapsedSeconds }) => { $('progress').value = completed / total; $('progress-text').textContent = `${completed} / ${total} フレーム · ${elapsedSeconds.toFixed(1)}秒`; } });
       if (directory) await writeFile(directory, 'export-report.json', jsonBlob(result.report));
       if (result.buffer) download(new Blob([result.buffer], { type: 'video/mp4' }), 'lyric-motion.mp4'); completed = true;
-      $('progress-text').textContent = `完了 · ${result.report.frameCount}フレーム`; message('動く文字素材を書き出しました。');
+      $('progress-text').textContent = `完了 · ${result.report.frameCount}フレーム · ${result.report.elapsedSeconds.toFixed(1)}秒`; message('動く文字素材を書き出しました。');
     } catch (error) { const canceled = error.name === 'AbortError'; $('progress-text').textContent = canceled ? '中止' : '失敗'; message(`${canceled ? '書き出しを中止しました。' : error.message}${directory ? ' 途中のファイルは出力フォルダーへ残しています。' : ''}`, !canceled); }
     finally { if (writable && !completed) await writable.abort().catch(() => {}); controller = null; lock(false); fillEditor(); draw(); }
   }

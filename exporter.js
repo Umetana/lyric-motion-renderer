@@ -21,6 +21,8 @@
     const { format, signal, onProgress = () => {}, writePng, target } = options;
     if (!['png', 'mp4'].includes(format)) throw new Error('未対応の出力形式です。');
     if (format === 'png' && !writePng) throw new Error('PNG保存先がありません。');
+    const concurrency = options.pngConcurrency ?? 2;
+    if (format === 'png' && ![1, 2].includes(concurrency)) throw new Error('PNGの同時処理数は1または2で指定してください。');
     abort(signal);
     await root.LyricMotionRenderer.prepareFonts(project);
     abort(signal);
@@ -29,7 +31,24 @@
     const { width, height, fps } = project.project;
     const { duration, frameCount } = range;
     let output, source;
-    const started = performance.now();
+    const started = performance.now(), timings = { renderMs: 0, pngEncodeMs: 0, fileWriteMs: 0 };
+    const pending = new Set(), pngStats = { bytes: 0, concurrency, maxInFlight: 0 };
+    let writeError = null, completed = 0;
+    const progress = () => onProgress({ completed: ++completed, total: frameCount, elapsedSeconds: (performance.now() - started) / 1000 });
+    function enqueuePng(frameIndex) {
+      const encodeStarted = performance.now();
+      // toBlob呼出時のCanvasをスナップショットし、最大2枚だけを処理中にする。
+      const encoded = pngBlob(canvas);
+      const task = (async () => {
+        const blob = await encoded; timings.pngEncodeMs += performance.now() - encodeStarted; pngStats.bytes += blob.size;
+        abort(signal); if (writeError) return;
+        const writeStarted = performance.now();
+        await writePng(`frame_${String(frameIndex + 1).padStart(6, '0')}.png`, blob);
+        timings.fileWriteMs += performance.now() - writeStarted;
+        progress();
+      })().catch(error => { writeError ||= error; }).finally(() => pending.delete(task));
+      pending.add(task); pngStats.maxInFlight = Math.max(pngStats.maxInFlight, pending.size);
+    }
     try {
       if (format === 'mp4') {
         if (!root.Mediabunny || typeof VideoEncoder === 'undefined') throw new Error('この環境ではMP4エンコードを利用できません。Chromeのlocalhost配信で試してください。');
@@ -48,26 +67,27 @@
       }
       for (let frameIndex = 0; frameIndex < frameCount; frameIndex++) {
         abort(signal);
+        while (format === 'png' && pending.size >= concurrency) { await Promise.race(pending); abort(signal); if (writeError) throw writeError; }
+        if (writeError) throw writeError;
         const time = frameIndex / fps;
+        const phaseStarted = performance.now();
         renderer.render(project, range.start + time, format === 'mp4' ? project.export.background : null);
-        if (format === 'png') {
-          const blob = await pngBlob(canvas);
-          abort(signal);
-          await writePng(`frame_${String(frameIndex + 1).padStart(6, '0')}.png`, blob);
-        } else {
-          await source.add(time, 1 / fps);
-        }
-        onProgress({ completed: frameIndex + 1, total: frameCount, elapsedSeconds: (performance.now() - started) / 1000 });
+        timings.renderMs += performance.now() - phaseStarted;
+        if (format === 'png') enqueuePng(frameIndex);
+        else { await source.add(time, 1 / fps); progress(); }
         if (frameIndex % 10 === 0) await new Promise(resolve => setTimeout(resolve, 0));
       }
-      abort(signal);
+      await Promise.all(pending);
+      abort(signal); if (writeError) throw writeError;
       if (output) { source.close(); await output.finalize(); }
       return { buffer: output && !target ? output.target.buffer : null, report: {
         schema: 'vct-lyric-motion.export-report.v1', format, width, height, fps, frameCount,
         duration: frameCount / fps, requestedDuration: duration, sourceStart: range.start, sourceEnd: range.end, sceneId: options.sceneId ?? null, audioIncluded: false,
-        alpha: format === 'png', elapsedSeconds: (performance.now() - started) / 1000
+        alpha: format === 'png', ...(format === 'png' ? { timings, pngStats } : {}), elapsedSeconds: (performance.now() - started) / 1000
       } };
     } catch (error) {
+      // 中止／失敗後も処理中の画像化・書込を回収してから画面操作を戻す。
+      await Promise.all(pending);
       if (output && output.state !== 'finalized' && output.state !== 'canceled') await output.cancel().catch(() => {});
       throw error;
     } finally {
