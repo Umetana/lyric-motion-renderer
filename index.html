@@ -9,7 +9,7 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <header><div><p class="eyebrow">VCreatorTools · v0.20.1-dev</p><h1>Lyric Motion Renderer</h1><p>歌詞を配置し、動きを振り付ける。</p></div><div class="toolbar"><button id="sample">文字演出サンプル</button><span id="save-controls"><label>保存形式<select id="save-format"><option value="json">JSONのみ</option><option value="bundle">素材込み（ZIP）</option></select></label></span><button id="save">保存</button><button id="save-as">名前を付けて保存</button><button id="download-project">ダウンロード</button><label class="file-button">プロジェクト読込<input id="load" type="file" accept=".json,.zip"></label><a href="README.md">使い方</a></div></header>
+  <header><div><p class="eyebrow">VCreatorTools · v0.21.0-dev</p><h1>Lyric Motion Renderer</h1><p>歌詞を配置し、動きを振り付ける。</p></div><div class="toolbar"><button id="sample">文字演出サンプル</button><span id="save-controls"><label>保存形式<select id="save-format"><option value="json">JSONのみ</option><option value="bundle">素材込み（ZIP）</option></select></label></span><button id="save">保存</button><button id="save-as">名前を付けて保存</button><button id="download-project">ダウンロード</button><label class="file-button">プロジェクト読込<input id="load" type="file" accept=".json,.zip"></label><a href="README.md">使い方</a></div></header>
   <div id="recovery-bar"><span id="recovery-status" role="status">自動保存を準備しています…</span><span id="recovery-actions" hidden><button id="restore-work">前回の作業を復元</button><button id="discard-work">前回の作業を破棄</button></span></div>
   <main>
     <section class="preview-panel">
@@ -74,9 +74,9 @@
 </div></details>
 <details id="inspector-export" class="inspector-group"><summary>書き出し</summary><div class="inspector-body">      <p class="hint">MP4は背景色をキーで抜く素材です。半透明・発光の色を保ちたい場合は透過PNG連番を利用してください。</p>
       <h2>書き出し</h2>
-      <fieldset id="export-settings"><label>書き出す範囲<select id="export-scope"><option value="all">曲全体</option><option value="range">指定範囲</option><option value="scene">選択Scene単体</option></select></label><div id="export-range" hidden><div class="pair"><label>開始（曲の秒）<input id="export-start" type="number" value="0" step="0.001"></label><label>終了（曲の秒）<input id="export-end" type="number" value="10" step="0.001"></label></div><div class="toolbar"><button id="set-export-start">現在位置を開始に</button><button id="set-export-end">現在位置を終了に</button></div></div><p id="export-range-info" class="hint"></p></fieldset>
+      <fieldset id="export-settings"><label>PNG連番の保存方法<select id="png-output"><option value="folder">画像をフォルダーへ</option><option value="zip">ZIPにまとめて保存</option></select></label><p class="hint">ZIPは再圧縮せず順次保存します。使用前に展開してください。ZIPの保存は対応するChrome／Edge等で利用できます。</p><label>書き出す範囲<select id="export-scope"><option value="all">曲全体</option><option value="range">指定範囲</option><option value="scene">選択Scene単体</option></select></label><div id="export-range" hidden><div class="pair"><label>開始（曲の秒）<input id="export-start" type="number" value="0" step="0.001"></label><label>終了（曲の秒）<input id="export-end" type="number" value="10" step="0.001"></label></div><div class="toolbar"><button id="set-export-start">現在位置を開始に</button><button id="set-export-end">現在位置を終了に</button></div></div><p id="export-range-info" class="hint"></p></fieldset>
       <div class="export-buttons"><button id="export-png">透過PNG連番</button><button id="export-mp4">MP4（背景色あり）</button></div>
-      <p class="hint">PNG連番はChrome等のフォルダー保存に対応した環境で利用できます。選択したフォルダー内に新しい出力フォルダーを作成します。</p>
+      <p class="hint">フォルダー出力は選択先に新しい出力フォルダーを作成します。ZIP出力は使用前に展開し、画像連番として取り込んでください。</p>
       <progress id="progress" max="1" value="0" aria-label="書き出し進捗"></progress>
       <div class="export-status"><span id="progress-text">待機中</span><button id="cancel" disabled>中止</button></div>
 </div></details>
@@ -95,6 +95,6 @@
   <script src="vendor/vct-ui/placement-editor/placement-editor.js"></script>
   <script src="vendor/vct-ui/inline-color-picker/picker.js"></script>
   <script src="vendor/mediabunny-1.61.0.min.js"></script>
-  <script src="project.js"></script><script src="scene-project.js"></script><script src="motion-presets.js"></script><script src="lyric-script.js"></script><script src="effects.js"></script><script src="fonts.js"></script><script src="renderer.js"></script><script src="exporter.js"></script><script src="project-bundle.js"></script><script src="recovery-store.js"></script><script src="scene-editor.js"></script>
+  <script src="project.js"></script><script src="scene-project.js"></script><script src="motion-presets.js"></script><script src="lyric-script.js"></script><script src="effects.js"></script><script src="fonts.js"></script><script src="renderer.js"></script><script src="exporter.js"></script><script src="png-zip.js"></script><script src="project-bundle.js"></script><script src="recovery-store.js"></script><script src="scene-editor.js"></script>
 </body>
 </html>

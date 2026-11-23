@@ -385,3 +385,14 @@ test('Lyric Motion: PNGは最大2枚のスナップショットを保存し、�
   let failedActive=0;await assert.rejects(()=>E.exportProject(project,{format:'png',start:0,end:.2,writePng:async()=>{failedActive++;await wait(5);failedActive--;throw new Error('disk failure');}}),/disk failure/);assert.equal(failedActive,0);
  } finally { if(previousDocument===undefined)delete globalThis.document;else globalThis.document=previousDocument;if(previousRenderer===undefined)delete globalThis.LyricMotionRenderer;else globalThis.LyricMotionRenderer=previousRenderer; }
 });
+
+test('Lyric Motion: PNG用ZIPは書込を直列化し、画像をSTORE方式とCRC付きで逐次保存する', async () => {
+ const Z=require('../png-zip.js'),chunks=[];let active=0,maxActive=0;
+ const z=Z.create({write:async chunk=>{active++;maxActive=Math.max(maxActive,active);await new Promise(r=>setTimeout(r,1));chunks.push(chunk);active--;}});
+ await Promise.all([z.add('frame_000001.png',new Blob(['abc'])),z.add('frame_000002.png',new Blob(['def']))]);
+ const result=await z.finish(),bytes=new Uint8Array(await new Blob(chunks).arrayBuffer()),view=new DataView(bytes.buffer);
+ assert.equal(maxActive,1);assert.equal(result.fileCount,2);assert.equal(result.bytes,bytes.length);assert.equal(result.zip64,false);assert.equal(view.getUint32(0,true),0x04034b50);assert.equal(view.getUint16(8,true),0);assert.equal(view.getUint32(14,true),0x352441c2);assert.equal(view.getUint32(bytes.length-22,true),0x06054b50);assert.equal(view.getUint16(bytes.length-12,true),2);
+ await assert.rejects(()=>z.add('late.png',new Blob()),/終了/);await assert.rejects(()=>z.finish(),/終了/);
+ const dup=Z.create({write:async()=>{}});await dup.add('same.png',new Blob());await assert.rejects(()=>dup.add('same.png',new Blob()),/重複/);await assert.rejects(()=>dup.add('../bad.png',new Blob()),/不正/);
+ let writes=0;const broken=Z.create({write:async()=>{writes++;throw new Error('zip disk error');}});const settled=await Promise.allSettled([broken.add('a.png',new Blob(['a'])),broken.add('b.png',new Blob(['b']))]);assert(settled.every(r=>r.status==='rejected'));await assert.rejects(()=>broken.finish(),/zip disk error/);assert.equal(writes,1);
+});

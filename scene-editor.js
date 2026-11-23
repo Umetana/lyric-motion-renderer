@@ -252,6 +252,7 @@
     return scope === 'scene' ? { sceneId: sceneId ?? '' } : scope === 'range' ? { start: numeric($('export-start')), end: numeric($('export-end')) } : {};
   }
   function updateExportRange() {
+    $('export-png').textContent = $('png-output').value === 'zip' ? '透過PNG連番（ZIP）' : '透過PNG連番（フォルダー）';
     $('export-range').hidden = $('export-scope').value !== 'range';
     try {
       const range = E.resolveRange(project, exportOptions());
@@ -553,23 +554,36 @@
     try { await writable.write(blob); await writable.close(); } catch (error) { await writable.abort().catch(() => {}); throw error; }
   }
   async function runExport(format) {
-    if (busy) return; let directory = null, writable = null, completed = false;
+    if (busy) return; let directory = null, writable = null, completed = false, zip = null, exportStarted = null;
     try {
       pause(); readEditor(); const rangeOptions = exportOptions(); E.resolveRange(project, rangeOptions); lock(true); controller = new AbortController(); $('progress').value = 0; $('progress-text').textContent = '保存先を選択'; let target = null;
-      if (format === 'png') {
+      if (format === 'png' && $('png-output').value === 'zip') {
+        if (!window.showSaveFilePicker) throw new Error('PNGのZIP出力はファイル保存APIに対応したChrome／Edge等で利用してください。');
+        const handle = await window.showSaveFilePicker({ suggestedName: 'lyric-motion-png.zip', types: [{ description: 'PNG連番ZIP', accept: { 'application/zip': ['.zip'] } }] });
+        if (controller.signal.aborted) throw new DOMException('中止', 'AbortError');
+        exportStarted = performance.now(); writable = await handle.createWritable(); zip = LyricMotionPngZip.create(writable);
+        await zip.add('project.lyricmotion.json', jsonBlob(project));
+      } else if (format === 'png') {
         if (!window.showDirectoryPicker) throw new Error('PNG連番はフォルダー保存に対応したChrome等で利用してください。');
         const parent = await window.showDirectoryPicker({ mode: 'readwrite' }); if (controller.signal.aborted) throw new DOMException('中止', 'AbortError');
-        directory = await parent.getDirectoryHandle(newId('lyric-motion'), { create: true }); await writeFile(directory, 'project.lyricmotion.json', jsonBlob(project));
+        exportStarted = performance.now(); directory = await parent.getDirectoryHandle(newId('lyric-motion'), { create: true }); await writeFile(directory, 'project.lyricmotion.json', jsonBlob(project));
       } else if (window.showSaveFilePicker) {
         const handle = await window.showSaveFilePicker({ suggestedName: 'lyric-motion.mp4', types: [{ description: 'MP4動画', accept: { 'video/mp4': ['.mp4'] } }] });
         if (controller.signal.aborted) throw new DOMException('中止', 'AbortError'); writable = await handle.createWritable(); target = new Mediabunny.StreamTarget(writable);
       }
-      $('progress-text').textContent = '書き出し準備中';
-      const result = await E.exportProject(project, { ...rangeOptions, format, target, signal: controller.signal, writePng: directory ? (name, blob) => writeFile(directory, name, blob) : null,
+      exportStarted ??= performance.now(); $('progress-text').textContent = '書き出し準備中';
+      const result = await E.exportProject(project, { ...rangeOptions, format, target, signal: controller.signal, writePng: zip ? (name, blob) => zip.add(name, blob) : directory ? (name, blob) => writeFile(directory, name, blob) : null,
         onProgress: ({ completed, total, elapsedSeconds }) => { $('progress').value = completed / total; $('progress-text').textContent = `${completed} / ${total} フレーム · ${elapsedSeconds.toFixed(1)}秒`; } });
+      if (format === 'png') result.report.pngContainer = zip ? 'zip-store' : 'folder';
       if (directory) await writeFile(directory, 'export-report.json', jsonBlob(result.report));
+      if (zip) {
+        $('progress-text').textContent = 'ZIPを仕上げています';
+        await zip.add('export-report.json', jsonBlob(result.report)); await zip.finish();
+        if (controller.signal.aborted) throw new DOMException('中止', 'AbortError');
+        await writable.close();
+      }
       if (result.buffer) download(new Blob([result.buffer], { type: 'video/mp4' }), 'lyric-motion.mp4'); completed = true;
-      $('progress-text').textContent = `完了 · ${result.report.frameCount}フレーム · ${result.report.elapsedSeconds.toFixed(1)}秒`; message('動く文字素材を書き出しました。');
+      $('progress-text').textContent = `完了 · ${result.report.frameCount}フレーム · ${((performance.now() - exportStarted) / 1000).toFixed(1)}秒`; message('動く文字素材を書き出しました。');
     } catch (error) { const canceled = error.name === 'AbortError'; $('progress-text').textContent = canceled ? '中止' : '失敗'; message(`${canceled ? '書き出しを中止しました。' : error.message}${directory ? ' 途中のファイルは出力フォルダーへ残しています。' : ''}`, !canceled); }
     finally { if (writable && !completed) await writable.abort().catch(() => {}); controller = null; lock(false); fillEditor(); draw(); }
   }
