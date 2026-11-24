@@ -100,8 +100,8 @@ select.vct-cd-native-hidden { display: none !important; }
 
 #font-custom[hidden] { display: none; }
 
-#reference-image { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: #000; pointer-events: none; }
-#reference-image[hidden] { display: none; }
+#reference-image, #reference-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: #000; pointer-events: none; }
+#reference-image[hidden], #reference-video[hidden] { display: none; }
 #preview { position: relative; }
 .reference-controls { margin-top: 10px; font-size: 12px; }
 .reference-controls .checkbox-label { margin: 0; }

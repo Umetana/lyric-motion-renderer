@@ -73,6 +73,7 @@
         while (format === 'png' && pending.size >= concurrency) { await Promise.race(pending); abort(signal); if (writeError) throw writeError; }
         if (writeError) throw writeError;
         const time = frameIndex / fps;
+        if (mv) await mv.renderBackground(range.start + time);
         const phaseStarted = performance.now();
         renderer.render(project, range.start + time, mv ? '#000000' : format === 'mp4' ? project.export.background : null, mv?.background);
         timings.renderMs += performance.now() - phaseStarted;
@@ -86,7 +87,7 @@
       return { buffer: output && !target ? output.target.buffer : null, report: {
         schema: 'vct-lyric-motion.export-report.v1', format, width, height, fps, frameCount,
         duration: frameCount / fps, requestedDuration: duration, sourceStart: range.start, sourceEnd: range.end, sceneId: options.sceneId ?? null, audioIncluded: !!mv,
-        ...(mv ? { composition: 'still-image-mv', backgroundFit: options.mv.fit || 'contain' } : {}),
+        ...(mv ? { composition: options.mv.videoFile ? 'loop-video-mv' : 'still-image-mv', backgroundFit: options.mv.fit || 'contain', ...(mv.videoDuration ? { backgroundDuration: mv.videoDuration, backgroundAudioIncluded: false } : {}) } : {}),
         alpha: format === 'png', ...(format === 'png' ? { timings, pngStats } : {}), elapsedSeconds: (performance.now() - started) / 1000
       } };
     } catch (error) {

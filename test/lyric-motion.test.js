@@ -421,6 +421,35 @@ test('Lyric Motion: 簡易MVは音声を範囲内へ切り、欠落・終端を�
   assert.equal(disposed,1);assert.equal(imagesClosed,1);assert.equal(returned,1);
   const controller=new AbortController(),cancel=await MV.prepare(opts,range,controller.signal);controller.abort();await assert.rejects(()=>cancel.writeUntil(.4),e=>e.name==='AbortError');await cancel.dispose();assert.equal(disposed,2);
   const failed=await MV.prepare(opts,range);failWrite=true;await assert.rejects(()=>failed.writeUntil(.4),/audio disk failure/);await failed.dispose();assert.equal(disposed,3);assert.equal(imagesClosed,3);assert(closed>3);
-  await assert.rejects(()=>MV.prepare({audioFile:opts.audioFile},range),/背景画像と音源/);
+  await assert.rejects(()=>MV.prepare({audioFile:opts.audioFile},range),/背景画像または動画と音源/);
  } finally {if(oldB===undefined)delete globalThis.Mediabunny;else globalThis.Mediabunny=oldB;if(oldImage===undefined)delete globalThis.createImageBitmap;else globalThis.createImageBitmap=oldImage;}
+});
+
+test('Lyric Motion: 背景動画のループ位置は曲全体の時刻から決まり、境界の誤差を吸収する', () => {
+ const V=require('../video-background.js');
+ assert.deepEqual(V.loopPosition(0,2),{cycle:0,time:0});assert.deepEqual(V.loopPosition(5.25,2),{cycle:2,time:1.25});
+ assert.deepEqual(V.loopPosition(6,2),{cycle:3,time:0});assert.deepEqual(V.loopPosition(5.999999999,2),{cycle:3,time:0});
+ assert.throws(()=>V.loopPosition(-1,2));assert.throws(()=>V.loopPosition(1,0));assert.throws(()=>V.loopPosition(Infinity,2));
+});
+
+test('Lyric Motion: 背景動画は元FPSのフレームを順次保持し、ループ・逆シーク・中止で解放する', async () => {
+ const V=require('../video-background.js'),oldB=globalThis.Mediabunny,oldDocument=globalThis.document;
+ let opened=0,returned=0,disposed=0,drawn=null,closed=0,fail=false;const canvases=[];
+ globalThis.document={createElement(){const c={width:0,height:0,getContext(){return{clearRect(){}};}};canvases.push(c);return c;}};
+ globalThis.Mediabunny={ALL_FORMATS:[],BlobSource:class{},Input:class{async getPrimaryVideoTrack(){return{canDecode:async()=>!fail,getFirstTimestamp:async()=>5,computeDuration:async()=>6,getDisplayWidth:async()=>320,getDisplayHeight:async()=>180};}dispose(){disposed++;}},
+  VideoSampleSink:class{samples(at){opened++;const times=[5,5.25,5.5,5.75];let i=Math.max(0,times.findLastIndex(t=>t<=at));return{async next(){const time=times[i++];return time===undefined?{done:true}:{done:false,value:{timestamp:time,close(){closed++;},draw(){drawn=time;}}};},async return(){returned++;return{done:true};}};}}};
+ try {
+  const controller=new AbortController(),video=await V.prepare(new Blob(['video']),'cover',controller.signal);assert.equal(video.duration,1);
+  await video.render(.1);assert.equal(drawn,5);await video.render(.2);assert.equal(drawn,5);assert.equal(opened,1);
+  await video.render(.6);assert.equal(drawn,5.5);await video.render(1.25);assert.equal(drawn,5.25);assert.equal(opened,2);assert.equal(returned,1);
+  await video.render(1.1);assert.equal(drawn,5);assert.equal(opened,3);controller.abort();await assert.rejects(()=>video.render(2),e=>e.name==='AbortError');await video.dispose();assert.equal(disposed,1);assert.equal(returned,3);assert(closed>=6);assert.equal(canvases[0].width,1);
+  fail=true;await assert.rejects(()=>V.prepare(new Blob(['bad']),'contain'),/読み出せません/);assert.equal(disposed,2);
+ } finally {if(oldB===undefined)delete globalThis.Mediabunny;else globalThis.Mediabunny=oldB;if(oldDocument===undefined)delete globalThis.document;else globalThis.document=oldDocument;}
+});
+
+test('Lyric Motion: 素材込みZIPは30MBを超える背景動画も往復し、画像の上限は保持する', async () => {
+ const B=require('../project-bundle.js'),project=S.sample();project.audio=null;
+ const video=new File([new Uint8Array(30*1024*1024+1)],'loop.mp4',{type:'video/mp4'}),view={visible:true,fit:'cover'};
+ const packed=await B.pack(project,null,video,view),result=await B.unpack(packed);assert.equal(result.reference.size,video.size);assert.equal(result.reference.type,'video/mp4');assert.equal(result.reference.name,'loop.mp4');assert.deepEqual(result.view,view);
+ await assert.rejects(()=>B.pack(project,null,new File([video],'large.png',{type:'image/png'}),view),/上限/);
 });

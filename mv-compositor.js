@@ -8,21 +8,25 @@
     return { x: (width - imageWidth * scale) / 2, y: (height - imageHeight * scale) / 2, width: imageWidth * scale, height: imageHeight * scale };
   }
   async function prepare(options, range, signal) {
-    if (!(options.imageFile instanceof Blob) || !(options.audioFile instanceof Blob)) throw new Error('簡易MVには背景画像と音源を選択してください。');
-    if (options.imageFile.size > 30 * 1024 * 1024 || options.audioFile.size > 200 * 1024 * 1024) throw new Error('背景画像は30MB以下、音源は200MB以下にしてください。');
+    if (!(options.videoFile instanceof Blob || options.imageFile instanceof Blob) || !(options.audioFile instanceof Blob)) throw new Error('簡易MVには背景画像または動画と音源を選択してください。');
+    if (options.videoFile && options.imageFile) throw new Error('背景には画像または動画を1つ選択してください。');
+    if (options.imageFile?.size > 30 * 1024 * 1024 || options.audioFile.size > 200 * 1024 * 1024) throw new Error('背景画像は30MB以下、音源は200MB以下にしてください。');
     const fit = options.fit || 'contain';
     if (!['contain', 'cover'].includes(fit)) throw new Error('背景画像の配置が不正です。');
     const B = root.Mediabunny;
-    let image, input, iterator, pending;
+    let image, video, input, iterator, pending;
     async function dispose() {
       pending?.close(); pending = null;
       if (iterator) await iterator.return().catch(() => {});
-      input?.dispose(); image?.close();
+      input?.dispose(); image?.close(); if (video) await video.dispose();
     }
     try {
       abort(signal);
-      image = await createImageBitmap(options.imageFile);
-      if (image.width > 8192 || image.height > 8192 || image.width * image.height > 32000000) throw new Error('背景画像は各辺8192px以下、合計3200万画素以下にしてください。');
+      if (options.videoFile) video = await root.LyricMotionVideo.prepare(options.videoFile, fit, signal);
+      else {
+        image = await createImageBitmap(options.imageFile);
+        if (image.width > 8192 || image.height > 8192 || image.width * image.height > 32000000) throw new Error('背景画像は各辺8192px以下、合計3200万画素以下にしてください。');
+      }
       input = new B.Input({ source: new B.BlobSource(options.audioFile), formats: B.ALL_FORMATS });
       const track = await input.getPrimaryAudioTrack();
       if (!track || !await track.canDecode()) throw new Error('この音源を読み出せません。対応するMP3・WAV等を選び直してください。');
@@ -66,7 +70,7 @@
         // 音源の開始前・終端後や欠落区間は無音。曲の時刻は動かさない。
         await silence(Math.min(until, pending ? Math.max(cursor, Math.round((pending.timestamp - range.start) * sampleRate)) : until));
       }
-      return { background: { image, fit }, source, writeUntil, dispose };
+      return { background: video?.background || { image, fit }, videoDuration: video?.duration, renderBackground: video ? time => video.render(time) : async () => {}, source, writeUntil, dispose };
     } catch (error) { await dispose(); throw error; }
   }
   const api = { imageRect, prepare };

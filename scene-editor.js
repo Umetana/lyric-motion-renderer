@@ -158,33 +158,72 @@
     $('background-preset').value = ['#00ff00', '#0000ff', '#ff00ff'].includes(color) ? color : 'custom';
     dialog?.refresh($('background-preset'));
   }
-  let referenceUrl = null, referenceRevision = 0, referenceFile = null, audioFile = null;
+  let referenceUrl = null, referenceRevision = 0, referenceFile = null, audioFile = null, referenceDuration = 0;
+  let referencePlayPending = false, referencePlaybackFailed = false;
+  const isReferenceVideo = file => ['video/mp4', 'video/webm'].includes(file?.type);
   const saveHandles = new Map();
-  function updateReference() {
-    $('reference-image').hidden = !referenceUrl || !$('reference-visible').checked || $('preview-background').checked;
-    $('reference-image').style.objectFit = document.querySelector('input[name="reference-fit"]:checked').value;
-    $('reference-visible').disabled = busy || !referenceUrl; $('reference-clear').disabled = busy || !referenceUrl;
+  async function prepareReference(file) {
+    if (!(file instanceof Blob)) throw new Error('背景素材が不正です。');
+    if (isReferenceVideo(file)) {
+      const video = await LyricMotionVideo.prepare(file, 'contain');
+      try { await video.render(0); return { url: URL.createObjectURL(file), duration: video.duration }; }
+      finally { await video.dispose(); }
+    }
+    if (file.size > 30 * 1024 * 1024) throw new Error('参照画像は30MB以下にしてください。');
+    if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) throw new Error('PNG・JPEG・WebP、またはMP4・WebMの背景を選択してください。');
+    const url = URL.createObjectURL(file);
+    try {
+      const image = new Image(); image.src = url; await image.decode();
+      if (image.naturalWidth > 8192 || image.naturalHeight > 8192 || image.naturalWidth * image.naturalHeight > 32000000) throw new Error('参照画像は各辺8192px以下、合計3200万画素以下にしてください。');
+      return { url, duration: 0 };
+    } catch (error) { URL.revokeObjectURL(url); throw error; }
   }
+  function setReference(file, url, duration = 0) {
+    $('reference-video').pause(); $('reference-video').removeAttribute('src'); $('reference-video').load(); $('reference-image').removeAttribute('src');
+    if (referenceUrl) URL.revokeObjectURL(referenceUrl);
+    referenceFile = file; referenceUrl = url; referenceDuration = duration; referencePlaybackFailed = false;
+    $(isReferenceVideo(file) ? 'reference-video' : 'reference-image').src = url;
+    $('reference-name').textContent = file.name;
+  }
+  function syncReferenceVideo() {
+    const video = $('reference-video');
+    if (video.hidden || !referenceDuration || video.readyState < 1) { video.pause(); return; }
+    const at = LyricMotionVideo.loopPosition(time, referenceDuration).time;
+    if (Math.abs(video.currentTime - at) > (playing ? 0.15 : 0.005)) video.currentTime = at;
+    if (!playing || busy) video.pause();
+    else if (video.paused && !referencePlayPending && !referencePlaybackFailed) {
+      referencePlayPending = true; const url = referenceUrl;
+      video.play().catch(error => { if (referenceUrl === url && error.name !== 'AbortError') { referencePlaybackFailed = true; message('背景動画をプレビュー再生できません。対応するMP4／WebMを選び直してください。', true); } }).finally(() => { referencePlayPending = false; });
+    }
+  }
+  function updateReference() {
+    const visible = !!referenceUrl && $('reference-visible').checked && !$('preview-background').checked;
+    $('reference-image').hidden = !visible || isReferenceVideo(referenceFile);
+    $('reference-video').hidden = !visible || !isReferenceVideo(referenceFile);
+    for (const id of ['reference-image', 'reference-video']) $(id).style.objectFit = document.querySelector('input[name="reference-fit"]:checked').value;
+    $('reference-visible').disabled = busy || !referenceUrl; $('reference-clear').disabled = busy || !referenceUrl;
+    syncReferenceVideo();
+  }
+  $('reference-video').addEventListener('loadedmetadata', updateReference);
+  $('reference-video').addEventListener('error', () => { if (isReferenceVideo(referenceFile) && $('reference-video').error) { referencePlaybackFailed = true; message('背景動画のプレビューを表示できません。対応するMP4／WebMを選び直してください。', true); } });
   $('reference-file').addEventListener('change', async () => {
     const file = $('reference-file').files[0]; if (!file || busy) return;
     const revision = ++referenceRevision; let url;
     try {
-      if (file.size > 30 * 1024 * 1024) throw new Error('参照画像は30MB以下にしてください。');
-      if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) throw new Error('PNG・JPEG・WebPの画像を選択してください。');
-      url = URL.createObjectURL(file); const image = new Image(); image.src = url; await image.decode();
-      if (image.naturalWidth > 8192 || image.naturalHeight > 8192 || image.naturalWidth * image.naturalHeight > 32000000) throw new Error('参照画像は各辺8192px以下、合計3200万画素以下にしてください。');
-      if (revision !== referenceRevision) return;
-      if (referenceUrl) URL.revokeObjectURL(referenceUrl); referenceUrl = url; url = null;
-      referenceFile = file; $('reference-image').src = referenceUrl; $('reference-name').textContent = file.name; $('reference-visible').checked = true; $('preview-background').checked = false; updateReference(); draw();
-      message('背景画像を参照表示しました。簡易MVのMP4出力では背景として使えます。');
-    } catch (error) { if (revision === referenceRevision) message(`参照画像を読み込めません: ${error.message}`, true); }
+      const media = await prepareReference(file); url = media.url;
+      if (revision !== referenceRevision || busy) return;
+      setReference(file, url, media.duration); url = null;
+      $('reference-visible').checked = true; $('preview-background').checked = false; updateReference(); draw();
+      message(isReferenceVideo(file) ? '背景動画を読み込みました。曲全体の時刻でループし、簡易MVに合成します。動画の音声は使用しません。' : '背景画像を参照表示しました。簡易MVのMP4出力では背景として使えます。');
+    } catch (error) { if (revision === referenceRevision) message(`背景を読み込めません: ${error.message}`, true); }
     finally { if (url) URL.revokeObjectURL(url); $('reference-file').value = ''; }
   });
   function clearReference() {
-    referenceRevision++; if (referenceUrl) URL.revokeObjectURL(referenceUrl); referenceUrl = null;
-    referenceFile = null; $('reference-image').removeAttribute('src'); $('reference-name').textContent = '画像なし'; $('reference-visible').checked = false; updateReference();
+    referenceRevision++; $('reference-video').pause(); $('reference-video').removeAttribute('src'); $('reference-video').load();
+    if (referenceUrl) URL.revokeObjectURL(referenceUrl); referenceUrl = null; referenceDuration = 0;
+    referenceFile = null; $('reference-image').removeAttribute('src'); $('reference-name').textContent = '背景なし'; $('reference-visible').checked = false; updateReference();
   }
-  $('reference-clear').addEventListener('click', () => { clearReference(); message('参照画像を外しました。'); });
+  $('reference-clear').addEventListener('click', () => { clearReference(); message('背景を外しました。'); });
   $('reference-visible').addEventListener('change', () => { if ($('reference-visible').checked) $('preview-background').checked = false; updateReference(); draw(); });
   for (const input of document.querySelectorAll('input[name="reference-fit"]')) input.addEventListener('change', updateReference);
   $('preview-background').addEventListener('change', () => { updateReference(); draw(); });
@@ -203,7 +242,7 @@
     if (!colorIds.includes(event.target.id) || !VCTInlineColorPicker.isHex(event.target.value) || busy) return;
     try { pause(); readEditor(); syncBackgroundPreset(); draw(); } catch (error) { message(error.message, true); }
   });
-  function pause() { playing = false; $('audio').pause(); $('play').textContent = '再生'; updatePlacementControls(); }
+  function pause() { playing = false; $('audio').pause(); $('reference-video').pause(); $('play').textContent = '再生'; updatePlacementControls(); }
   function fitPreview() {
     const ratio = project.project.width / project.project.height;
     const wrap = $('stage').parentElement, panel = wrap.parentElement;
@@ -231,7 +270,7 @@
   });
   function draw() {
     try { renderer.render(project, time, $('preview-background').checked ? project.export.background : null); } catch (error) { pause(); message(error.message, true); return false; }
-    fitPreview();
+    syncReferenceVideo(); fitPreview();
     $('seek').max = project.project.duration; $('seek').value = time;
     $('time').textContent = `曲全体 ${time.toFixed(3)} / ${project.project.duration.toFixed(3)} 秒`;
     updateTiming();
@@ -559,8 +598,8 @@
     if (busy) return; let directory = null, writable = null, completed = false, zip = null, exportStarted = null;
     try {
       pause(); readEditor(); const rangeOptions = exportOptions(); E.resolveRange(project, rangeOptions);
-      const mv = format === 'mp4' && $('mp4-mode').value === 'mv' ? { imageFile: referenceFile, audioFile, fit: document.querySelector('input[name="reference-fit"]:checked').value } : null;
-      if (mv && (!mv.imageFile || !mv.audioFile)) throw new Error('簡易MVにはプロジェクト設定の背景画像と音源を選択してください。');
+      const mv = format === 'mp4' && $('mp4-mode').value === 'mv' ? { ...(isReferenceVideo(referenceFile) ? { videoFile: referenceFile } : { imageFile: referenceFile }), audioFile, fit: document.querySelector('input[name="reference-fit"]:checked').value } : null;
+      if (mv && (!(mv.imageFile || mv.videoFile) || !mv.audioFile)) throw new Error('簡易MVにはプロジェクト設定の背景画像または動画と音源を選択してください。');
       lock(true); controller = new AbortController(); $('progress').value = 0; $('progress-text').textContent = '保存先を選択'; let target = null;
       if (format === 'png' && $('png-output').value === 'zip') {
         if (!window.showSaveFilePicker) throw new Error('PNGのZIP出力はファイル保存APIに対応したChrome／Edge等で利用してください。');
@@ -588,7 +627,7 @@
         await writable.close();
       }
       if (result.buffer) download(new Blob([result.buffer], { type: 'video/mp4' }), mv ? 'lyric-motion-mv.mp4' : 'lyric-motion.mp4'); completed = true;
-      $('progress-text').textContent = `完了 · ${result.report.frameCount}フレーム · ${((performance.now() - exportStarted) / 1000).toFixed(1)}秒`; message(mv ? '背景画像・音源・歌詞を合成した簡易MVを書き出しました。' : '動く文字素材を書き出しました。');
+      $('progress-text').textContent = `完了 · ${result.report.frameCount}フレーム · ${((performance.now() - exportStarted) / 1000).toFixed(1)}秒`; message(mv ? '背景・音源・歌詞を合成した簡易MVを書き出しました。' : '動く文字素材を書き出しました。');
     } catch (error) { const canceled = error.name === 'AbortError'; $('progress-text').textContent = canceled ? '中止' : '失敗'; message(`${canceled ? '書き出しを中止しました。' : error.message}${directory ? ' 途中のファイルは出力フォルダーへ残しています。' : ''}`, !canceled); }
     finally { if (writable && !completed) await writable.abort().catch(() => {}); controller = null; lock(false); fillEditor(); draw(); }
   }
@@ -629,13 +668,13 @@
   async function loadFile(input, callback) {
     const file = input.files[0]; if (!file || busy) return; let result;
     const bundle = input.id === 'load' && /\.zip$/i.test(file.name);
-    try { pause(); lock(true); if (file.size > (bundle ? LyricMotionBundle.LIMIT : 2 * 1024 * 1024)) throw new Error(bundle ? '素材込みファイルは240MB以下にしてください。' : '読込ファイルは2MB以下にしてください。');
+    try { pause(); referenceRevision++; lock(true); if (file.size > (bundle ? LyricMotionBundle.LIMIT : 2 * 1024 * 1024)) throw new Error(bundle ? '素材込みファイルは240MB以下にしてください。' : '読込ファイルは2MB以下にしてください。');
       result = await callback(bundle ? null : await file.text(), file.name, file); if (result.cancelled) { message('台本の読み込みをキャンセルしました。'); return; } await R.prepareFonts(result.project); project = result.project; saveHandles.clear(); motionUndo = null; sequenceSelection = ''; bulkIds.clear(); revision++; sceneId = project.scenes[0]?.id; elementId = project.scenes[0]?.elements[0]?.id;
       clearAudio();
       if (result.bundle) {
         clearReference();
         if (result.audio) { audioFile = result.audio; audioUrl = URL.createObjectURL(audioFile); $('audio').src = audioUrl; $('audio-name').textContent = audioFile.name; }
-        if (result.reference) { referenceFile = result.reference; referenceUrl = result.referenceURL; result.referenceURL = null; $('reference-image').src = referenceUrl; $('reference-name').textContent = referenceFile.name; }
+        if (result.reference) { setReference(result.reference, result.referenceURL, result.referenceDuration); result.referenceURL = null; }
         $('reference-visible').checked = !!referenceFile && result.view.visible;
         document.querySelector(`input[name="reference-fit"][value="${result.view.fit}"]`).checked = true;
         $('preview-background').checked = false; $('save-format').value = 'bundle'; updateReference();
@@ -646,12 +685,7 @@
   $('load').addEventListener('change', () => loadFile($('load'), async (text, name, file) => {
     if (text !== null) { const raw = JSON.parse(text); return { project: P.validate(raw), migrated: raw.schemaVersion === 1 }; }
     const result = await LyricMotionBundle.unpack(file); result.project = P.validate(result.project); result.bundle = true;
-    if (result.reference) {
-      if (!['image/png', 'image/jpeg', 'image/webp'].includes(result.reference.type)) throw new Error('参照画像の形式が未対応です。');
-      const url = URL.createObjectURL(result.reference);
-      try { const image = new Image(); image.src = url; await image.decode(); if (image.naturalWidth > 8192 || image.naturalHeight > 8192 || image.naturalWidth * image.naturalHeight > 32000000) throw new Error('参照画像の画素数が上限を超えています。'); result.referenceURL = url; }
-      catch (error) { URL.revokeObjectURL(url); throw error; }
-    }
+    if (result.reference) { const media = await prepareReference(result.reference); result.referenceURL = media.url; result.referenceDuration = media.duration; }
     return result;
   }));
   $('subtitle-file').addEventListener('change', () => loadFile($('subtitle-file'), (text, name) => {
@@ -738,23 +772,19 @@
     finally { recoveryWriting = false; }
   }
   $('restore-work').addEventListener('click', async () => {
-    if (!recoveryPending || busy) return; let imageUrl;
+    if (!recoveryPending || busy) return; let imageUrl, mediaDuration;
     try {
       pause(); lock(true); const { state, audio, reference } = recoveryPending;
       if (state.schema !== 'lyric-motion.recovery.v1') throw new Error('復帰データの形式が未対応です。');
       const candidate = P.validate(state.project);
       if (!state.view || !['contain', 'cover'].includes(state.view.fit) || typeof state.time !== 'number' || !Number.isFinite(state.time)) throw new Error('復帰データの表示設定が不正です。');
       if (audio && (!(audio instanceof Blob) || audio.size > 200 * 1024 * 1024 || audio.name !== candidate.audio?.source)) throw new Error('復帰音源が不正です。');
-      if (reference) {
-        if (!(reference instanceof Blob) || reference.size > 30 * 1024 * 1024 || !['image/png', 'image/jpeg', 'image/webp'].includes(reference.type)) throw new Error('復帰画像が不正です。');
-        imageUrl = URL.createObjectURL(reference); const image = new Image(); image.src = imageUrl; await image.decode();
-        if (image.naturalWidth > 8192 || image.naturalHeight > 8192 || image.naturalWidth * image.naturalHeight > 32000000) throw new Error('復帰画像の画素数が上限を超えています。');
-      }
+      if (reference) { const media = await prepareReference(reference); imageUrl = media.url; mediaDuration = media.duration; }
       await R.prepareFonts(candidate);
       project = candidate; revision++; motionUndo = null; sequenceSelection = ''; bulkIds.clear(); saveHandles.clear();
       clearAudio(); clearReference();
       if (audio) { audioFile = audio; audioUrl = URL.createObjectURL(audio); $('audio').src = audioUrl; $('audio-name').textContent = audio.name; }
-      if (reference) { referenceFile = reference; referenceUrl = imageUrl; imageUrl = null; $('reference-image').src = referenceUrl; $('reference-name').textContent = reference.name; }
+      if (reference) { setReference(reference, imageUrl, mediaDuration); imageUrl = null; }
       sceneId = state.sceneId; elementId = state.elementId; time = Math.max(0, Math.min(project.project.duration, state.time));
       $('reference-visible').checked = !!reference && state.view.visible; document.querySelector(`input[name="reference-fit"][value="${state.view.fit}"]`).checked = true;
       $('preview-background').checked = !!state.view.background; $('seek-on-select').checked = state.view.seekOnSelect !== false; $('save-format').value = state.view.format === 'bundle' ? 'bundle' : 'json';

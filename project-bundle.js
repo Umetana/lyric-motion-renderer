@@ -6,13 +6,13 @@
   function crc(bytes) { let c = 0xffffffff; for (const b of bytes) c = table[(c ^ b) & 255] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; }
   function check(ok) { if (!ok) throw new Error('素材込みプロジェクトが破損しているか、未対応の形式です。'); }
   const json = value => new Blob([JSON.stringify(value, null, 2)], { type: 'application/json' });
-  // ZIP STORE方式。圧縮済みの音源・画像を再圧縮せず、標準ZIPとしてまとめる。
+  // ZIP STORE方式。圧縮済みの音源・画像・動画を再圧縮せず、標準ZIPとしてまとめる。
   async function pack(project, audio, reference, view) {
     const entries = [['project.json', json(project)]];
     if (entries[0][1].size > JSON_LIMIT) throw new Error('プロジェクトJSONは2MB以下にしてください。');
     if (project.audio && !audio) throw new Error('音源が未接続です。音源を再選択するか、音源を外してから素材込み保存してください。');
     const manifest = { schema: 'lyric-motion.bundle.v1', view, audio: null, reference: null };
-    for (const [key, file, max] of [['audio', audio, 200], ['reference', reference, 30]]) if (file) {
+    for (const [key, file, max] of [['audio', audio, 200], ['reference', reference, reference?.type?.startsWith('video/') ? 200 : 30]]) if (file) {
       if (file.size > max * 1024 * 1024) throw new Error(`${key}の素材サイズが上限を超えています。`);
       manifest[key] = { name: file.name, type: file.type }; entries.push([`assets/${key}`, file]);
     }
@@ -43,7 +43,7 @@
       check(data.getUint16(cursor + 8, true) === 0x800 && data.getUint16(cursor + 10, true) === 0 && data.getUint32(cursor + 20, true) === length && cursor + 46 + nameLength + extra + comment <= end);
       const name = decoder.decode(bytes.subarray(cursor + 46, cursor + 46 + nameLength));
       check(['project.json', 'manifest.json', 'assets/audio', 'assets/reference'].includes(name) && !entries.has(name));
-      const max = name === 'assets/audio' ? 200 * 1024 * 1024 : name === 'assets/reference' ? 30 * 1024 * 1024 : JSON_LIMIT;
+      const max = name === 'assets/audio' ? 200 * 1024 * 1024 : name === 'assets/reference' ? 200 * 1024 * 1024 : JSON_LIMIT;
       check(length <= max && at === localEnd && at + 30 <= start && data.getUint32(at, true) === 0x04034b50);
       const localName = data.getUint16(at + 26, true), localExtra = data.getUint16(at + 28, true), content = at + 30 + localName + localExtra;
       check(data.getUint16(at + 6, true) === 0x800 && data.getUint16(at + 8, true) === 0 && data.getUint32(at + 14, true) === checksum && data.getUint32(at + 18, true) === length && data.getUint32(at + 22, true) === length && content + length <= start && decoder.decode(bytes.subarray(at + 30, at + 30 + localName)) === name);
@@ -59,6 +59,7 @@
       if (info) { check(typeof info.name === 'string' && info.name.length > 0 && info.name.length <= 1000 && typeof info.type === 'string' && info.type.length < 200); result[key] = new File([blob], info.name, { type: info.type }); }
       else result[key] = null;
     }
+    check(!result.reference || result.reference.size <= (result.reference.type.startsWith('video/') ? 200 : 30) * 1024 * 1024);
     check(!project.audio || result.audio && project.audio.source === result.audio.name);
     check(!result.audio || project.audio?.source === result.audio.name);
     check(result.view && typeof result.view.visible === 'boolean' && ['contain', 'cover'].includes(result.view.fit));
