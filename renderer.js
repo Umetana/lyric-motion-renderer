@@ -66,7 +66,7 @@
       this.cache.set(key, scratch);
       return scratch;
     }
-    render(project, time, background = null) {
+    render(project, time, background = null, backdrop = null) {
       const { canvas, context: ctx } = this;
       if (canvas.width !== project.project.width) canvas.width = project.project.width;
       if (canvas.height !== project.project.height) canvas.height = project.project.height;
@@ -74,6 +74,10 @@
       ctx.globalAlpha = 1;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       if (background) { ctx.fillStyle = background; ctx.fillRect(0, 0, canvas.width, canvas.height); }
+      if (backdrop) {
+        const rect = root.LyricMotionMV.imageRect(canvas.width, canvas.height, backdrop.image.width, backdrop.image.height, backdrop.fit);
+        ctx.drawImage(backdrop.image, rect.x, rect.y, rect.width, rect.height);
+      }
       // SceneとElementの配列順で描画し、後ろの要素を手前にする。
       for (const scene of project.scenes) {
       if (time < scene.start || time >= scene.end) continue;

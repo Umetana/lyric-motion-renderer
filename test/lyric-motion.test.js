@@ -396,3 +396,31 @@ test('Lyric Motion: PNG用ZIPは書込を直列化し、画像をSTORE方式とC
  const dup=Z.create({write:async()=>{}});await dup.add('same.png',new Blob());await assert.rejects(()=>dup.add('same.png',new Blob()),/重複/);await assert.rejects(()=>dup.add('../bad.png',new Blob()),/不正/);
  let writes=0;const broken=Z.create({write:async()=>{writes++;throw new Error('zip disk error');}});const settled=await Promise.allSettled([broken.add('a.png',new Blob(['a'])),broken.add('b.png',new Blob(['b']))]);assert(settled.every(r=>r.status==='rejected'));await assert.rejects(()=>broken.finish(),/zip disk error/);assert.equal(writes,1);
 });
+
+test('Lyric Motion: 簡易MVの静止画を中央のcontain／coverへ配置する', () => {
+ const MV=require('../mv-compositor.js');
+ assert.deepEqual(MV.imageRect(1920,1080,1000,1000,'contain'),{x:420,y:0,width:1080,height:1080});
+ assert.deepEqual(MV.imageRect(1920,1080,1000,1000,'cover'),{x:0,y:-420,width:1920,height:1920});
+ assert.throws(()=>MV.imageRect(1920,1080,0,1000,'contain'));assert.throws(()=>MV.imageRect(1920,1080,1000,1000,'stretch'));
+});
+
+test('Lyric Motion: 簡易MVは音声を範囲内へ切り、欠落・終端を無音にし、中止と失敗時に解放する', async () => {
+ const MV=require('../mv-compositor.js'),oldB=globalThis.Mediabunny,oldImage=globalThis.createImageBitmap;
+ let disposed=0,imagesClosed=0,returned=0,closed=0,failWrite=false;const output=[];
+ const samples=[{timestamp:.18,numberOfFrames:8,value:1},{timestamp:.30,numberOfFrames:5,value:2}];
+ globalThis.createImageBitmap=async()=>({width:100,height:100,close(){imagesClosed++;}});
+ globalThis.Mediabunny={ALL_FORMATS:[],BlobSource:class{},Input:class{async getPrimaryAudioTrack(){return{canDecode:async()=>true,getSampleRate:async()=>100,getNumberOfChannels:async()=>2};}dispose(){disposed++;}},canEncodeAudio:async()=>true,
+  AudioSampleSource:class{async add(sample){if(failWrite)throw new Error('audio disk failure');output.push({time:sample.timestamp,data:[...sample.data]});}},
+  AudioSample:class{constructor(init){Object.assign(this,init);}close(){closed++;}},
+  AudioSampleSink:class{samples(){let i=0;return{async next(){const s=samples[i++];return{done:!s,value:s?{...s,sampleRate:100,numberOfChannels:2,close(){closed++;},copyTo(data,options){data.fill(s.value+options.planeIndex*10);}}:undefined};},async return(){returned++;return{done:true};}};}}};
+ try {
+  const opts={imageFile:new Blob(['image']),audioFile:new Blob(['audio']),fit:'contain'},range={start:.2,end:.4,duration:.2};
+  const mv=await MV.prepare(opts,range);await mv.writeUntil(.4);await mv.dispose();
+  assert.deepEqual(output.map(x=>x.time),[0,.06,.1,.15]);assert.deepEqual(output.map(x=>x.data.length),[12,8,10,10]);
+  assert.deepEqual(output[0].data,[1,1,1,1,1,1,11,11,11,11,11,11]);assert(output[1].data.every(n=>n===0));assert(output[3].data.every(n=>n===0));
+  assert.equal(disposed,1);assert.equal(imagesClosed,1);assert.equal(returned,1);
+  const controller=new AbortController(),cancel=await MV.prepare(opts,range,controller.signal);controller.abort();await assert.rejects(()=>cancel.writeUntil(.4),e=>e.name==='AbortError');await cancel.dispose();assert.equal(disposed,2);
+  const failed=await MV.prepare(opts,range);failWrite=true;await assert.rejects(()=>failed.writeUntil(.4),/audio disk failure/);await failed.dispose();assert.equal(disposed,3);assert.equal(imagesClosed,3);assert(closed>3);
+  await assert.rejects(()=>MV.prepare({audioFile:opts.audioFile},range),/背景画像と音源/);
+ } finally {if(oldB===undefined)delete globalThis.Mediabunny;else globalThis.Mediabunny=oldB;if(oldImage===undefined)delete globalThis.createImageBitmap;else globalThis.createImageBitmap=oldImage;}
+});

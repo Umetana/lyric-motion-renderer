@@ -176,7 +176,7 @@
       if (revision !== referenceRevision) return;
       if (referenceUrl) URL.revokeObjectURL(referenceUrl); referenceUrl = url; url = null;
       referenceFile = file; $('reference-image').src = referenceUrl; $('reference-name').textContent = file.name; $('reference-visible').checked = true; $('preview-background').checked = false; updateReference(); draw();
-      message('背景画像を参照表示しました。書き出しには含まれません。');
+      message('背景画像を参照表示しました。簡易MVのMP4出力では背景として使えます。');
     } catch (error) { if (revision === referenceRevision) message(`参照画像を読み込めません: ${error.message}`, true); }
     finally { if (url) URL.revokeObjectURL(url); $('reference-file').value = ''; }
   });
@@ -253,6 +253,8 @@
   }
   function updateExportRange() {
     $('export-png').textContent = $('png-output').value === 'zip' ? '透過PNG連番（ZIP）' : '透過PNG連番（フォルダー）';
+    $('export-mp4').textContent = $('mp4-mode').value === 'mv' ? 'MP4（簡易MV・音声あり）' : 'MP4（背景色あり）';
+    $('mv-export-info').hidden = $('mp4-mode').value !== 'mv';
     $('export-range').hidden = $('export-scope').value !== 'range';
     try {
       const range = E.resolveRange(project, exportOptions());
@@ -556,7 +558,10 @@
   async function runExport(format) {
     if (busy) return; let directory = null, writable = null, completed = false, zip = null, exportStarted = null;
     try {
-      pause(); readEditor(); const rangeOptions = exportOptions(); E.resolveRange(project, rangeOptions); lock(true); controller = new AbortController(); $('progress').value = 0; $('progress-text').textContent = '保存先を選択'; let target = null;
+      pause(); readEditor(); const rangeOptions = exportOptions(); E.resolveRange(project, rangeOptions);
+      const mv = format === 'mp4' && $('mp4-mode').value === 'mv' ? { imageFile: referenceFile, audioFile, fit: document.querySelector('input[name="reference-fit"]:checked').value } : null;
+      if (mv && (!mv.imageFile || !mv.audioFile)) throw new Error('簡易MVにはプロジェクト設定の背景画像と音源を選択してください。');
+      lock(true); controller = new AbortController(); $('progress').value = 0; $('progress-text').textContent = '保存先を選択'; let target = null;
       if (format === 'png' && $('png-output').value === 'zip') {
         if (!window.showSaveFilePicker) throw new Error('PNGのZIP出力はファイル保存APIに対応したChrome／Edge等で利用してください。');
         const handle = await window.showSaveFilePicker({ suggestedName: 'lyric-motion-png.zip', types: [{ description: 'PNG連番ZIP', accept: { 'application/zip': ['.zip'] } }] });
@@ -568,11 +573,11 @@
         const parent = await window.showDirectoryPicker({ mode: 'readwrite' }); if (controller.signal.aborted) throw new DOMException('中止', 'AbortError');
         exportStarted = performance.now(); directory = await parent.getDirectoryHandle(newId('lyric-motion'), { create: true }); await writeFile(directory, 'project.lyricmotion.json', jsonBlob(project));
       } else if (window.showSaveFilePicker) {
-        const handle = await window.showSaveFilePicker({ suggestedName: 'lyric-motion.mp4', types: [{ description: 'MP4動画', accept: { 'video/mp4': ['.mp4'] } }] });
+        const handle = await window.showSaveFilePicker({ suggestedName: mv ? 'lyric-motion-mv.mp4' : 'lyric-motion.mp4', types: [{ description: 'MP4動画', accept: { 'video/mp4': ['.mp4'] } }] });
         if (controller.signal.aborted) throw new DOMException('中止', 'AbortError'); writable = await handle.createWritable(); target = new Mediabunny.StreamTarget(writable);
       }
       exportStarted ??= performance.now(); $('progress-text').textContent = '書き出し準備中';
-      const result = await E.exportProject(project, { ...rangeOptions, format, target, signal: controller.signal, writePng: zip ? (name, blob) => zip.add(name, blob) : directory ? (name, blob) => writeFile(directory, name, blob) : null,
+      const result = await E.exportProject(project, { ...rangeOptions, format, target, mv, signal: controller.signal, writePng: zip ? (name, blob) => zip.add(name, blob) : directory ? (name, blob) => writeFile(directory, name, blob) : null,
         onProgress: ({ completed, total, elapsedSeconds }) => { $('progress').value = completed / total; $('progress-text').textContent = `${completed} / ${total} フレーム · ${elapsedSeconds.toFixed(1)}秒`; } });
       if (format === 'png') result.report.pngContainer = zip ? 'zip-store' : 'folder';
       if (directory) await writeFile(directory, 'export-report.json', jsonBlob(result.report));
@@ -582,8 +587,8 @@
         if (controller.signal.aborted) throw new DOMException('中止', 'AbortError');
         await writable.close();
       }
-      if (result.buffer) download(new Blob([result.buffer], { type: 'video/mp4' }), 'lyric-motion.mp4'); completed = true;
-      $('progress-text').textContent = `完了 · ${result.report.frameCount}フレーム · ${((performance.now() - exportStarted) / 1000).toFixed(1)}秒`; message('動く文字素材を書き出しました。');
+      if (result.buffer) download(new Blob([result.buffer], { type: 'video/mp4' }), mv ? 'lyric-motion-mv.mp4' : 'lyric-motion.mp4'); completed = true;
+      $('progress-text').textContent = `完了 · ${result.report.frameCount}フレーム · ${((performance.now() - exportStarted) / 1000).toFixed(1)}秒`; message(mv ? '背景画像・音源・歌詞を合成した簡易MVを書き出しました。' : '動く文字素材を書き出しました。');
     } catch (error) { const canceled = error.name === 'AbortError'; $('progress-text').textContent = canceled ? '中止' : '失敗'; message(`${canceled ? '書き出しを中止しました。' : error.message}${directory ? ' 途中のファイルは出力フォルダーへ残しています。' : ''}`, !canceled); }
     finally { if (writable && !completed) await writable.abort().catch(() => {}); controller = null; lock(false); fillEditor(); draw(); }
   }

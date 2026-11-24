@@ -20,6 +20,7 @@
     const range = resolveRange(input, options), project = range.project;
     const { format, signal, onProgress = () => {}, writePng, target } = options;
     if (!['png', 'mp4'].includes(format)) throw new Error('未対応の出力形式です。');
+    if (options.mv && format !== 'mp4') throw new Error('簡易MVはMP4で書き出してください。');
     if (format === 'png' && !writePng) throw new Error('PNG保存先がありません。');
     const concurrency = options.pngConcurrency ?? 2;
     if (format === 'png' && ![1, 2].includes(concurrency)) throw new Error('PNGの同時処理数は1または2で指定してください。');
@@ -30,7 +31,7 @@
     const renderer = new root.LyricMotionRenderer.Renderer(canvas);
     const { width, height, fps } = project.project;
     const { duration, frameCount } = range;
-    let output, source;
+    let output, source, mv;
     const started = performance.now(), timings = { renderMs: 0, pngEncodeMs: 0, fileWriteMs: 0 };
     const pending = new Set(), pngStats = { bytes: 0, concurrency, maxInFlight: 0 };
     let writeError = null, completed = 0;
@@ -56,6 +57,7 @@
         const { Output, Mp4OutputFormat, CanvasSource, BufferTarget, canEncodeVideo } = root.Mediabunny;
         const config = { width, height, frameRate: fps, bitrate: 12000000 };
         if (!await canEncodeVideo('avc', config)) throw new Error('この解像度・FPSでH.264を書き出せません。設定を下げてください。');
+        if (options.mv) mv = await root.LyricMotionMV.prepare(options.mv, range, signal);
         abort(signal);
         canvas.width = width; canvas.height = height;
         // メモリ出力は短い技術検証だけに限定する。長時間は逐次保存する。
@@ -63,6 +65,7 @@
         output = new Output({ format: new Mp4OutputFormat({ fastStart: target ? false : 'in-memory' }), target: target || new BufferTarget() });
         source = new CanvasSource(canvas, { codec: 'avc', bitrate: 12000000 });
         output.addVideoTrack(source, { frameRate: fps });
+        if (mv) output.addAudioTrack(mv.source);
         await output.start();
       }
       for (let frameIndex = 0; frameIndex < frameCount; frameIndex++) {
@@ -71,18 +74,19 @@
         if (writeError) throw writeError;
         const time = frameIndex / fps;
         const phaseStarted = performance.now();
-        renderer.render(project, range.start + time, format === 'mp4' ? project.export.background : null);
+        renderer.render(project, range.start + time, mv ? '#000000' : format === 'mp4' ? project.export.background : null, mv?.background);
         timings.renderMs += performance.now() - phaseStarted;
         if (format === 'png') enqueuePng(frameIndex);
-        else { await source.add(time, 1 / fps); progress(); }
+        else { await source.add(time, 1 / fps); if (mv) await mv.writeUntil(Math.min(range.end, range.start + (frameIndex + 1) / fps)); progress(); }
         if (frameIndex % 10 === 0) await new Promise(resolve => setTimeout(resolve, 0));
       }
       await Promise.all(pending);
       abort(signal); if (writeError) throw writeError;
-      if (output) { source.close(); await output.finalize(); }
+      if (output) { source.close(); mv?.source.close(); await output.finalize(); }
       return { buffer: output && !target ? output.target.buffer : null, report: {
         schema: 'vct-lyric-motion.export-report.v1', format, width, height, fps, frameCount,
-        duration: frameCount / fps, requestedDuration: duration, sourceStart: range.start, sourceEnd: range.end, sceneId: options.sceneId ?? null, audioIncluded: false,
+        duration: frameCount / fps, requestedDuration: duration, sourceStart: range.start, sourceEnd: range.end, sceneId: options.sceneId ?? null, audioIncluded: !!mv,
+        ...(mv ? { composition: 'still-image-mv', backgroundFit: options.mv.fit || 'contain' } : {}),
         alpha: format === 'png', ...(format === 'png' ? { timings, pngStats } : {}), elapsedSeconds: (performance.now() - started) / 1000
       } };
     } catch (error) {
@@ -91,6 +95,7 @@
       if (output && output.state !== 'finalized' && output.state !== 'canceled') await output.cancel().catch(() => {});
       throw error;
     } finally {
+      if (mv) await mv.dispose();
       renderer.cache.clear();
       canvas.width = 1; canvas.height = 1;
     }
